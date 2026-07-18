@@ -1,0 +1,60 @@
+{
+  "name": "tonic",
+  "version": "0.1.0",
+  "description": "A local macOS desktop app for coding-agent sessions and Git worktrees.",
+  "private": true,
+  "packageManager": "pnpm@10.28.1",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "tsc -b && vite build",
+    "lint": "tsc -b --noEmit",
+    "check:electron": "node --check electron/main.cjs && node --check electron/preload.cjs && node --check electron/store.cjs && node --check electron/session-scanner.cjs && node --check electron/git-service.cjs && node --check electron/editors.cjs",
+    "package": "pnpm build && electron-builder"
+  },
+  "keywords": [
+    "coding-agent",
+    "codex",
+    "claude-code",
+    "worktree",
+    "electron",
+    "macos"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "lucide-react": "^1.23.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^43.1.1",
+    "electron-builder": "^26.15.3",
+    "electron-builder-squirrel-windows": "26.15.3",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
+  },
+  "build": {
+    "appId": "dev.tonic.app",
+    "productName": "tonic",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "assets/icon.icns",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    }
+  }
+}
