@@ -54,6 +54,13 @@ const editorDefinitions = Object.freeze([
     name: "Warp",
     bundleId: "dev.warp.Warp-Stable",
     appNames: ["Warp.app"]
+  },
+  {
+    id: "cmux",
+    name: "cmux",
+    bundleId: "com.cmuxterm.app",
+    appNames: ["cmux.app"],
+    directoryCli: ["Contents", "Resources", "bin", "cmux"]
   }
 ]);
 
@@ -153,6 +160,20 @@ async function findEditorApplication(editor) {
   return findWithSpotlight(editor.bundleId);
 }
 
+async function findEditorDirectoryCli(editor, appPath) {
+  if (!Array.isArray(editor.directoryCli) || editor.directoryCli.length === 0) {
+    return null;
+  }
+
+  const executablePath = path.join(appPath, ...editor.directoryCli);
+  try {
+    const stats = await fs.stat(executablePath);
+    return stats.isFile() ? executablePath : null;
+  } catch {
+    return null;
+  }
+}
+
 async function detectEditors(customEditorPath = null) {
   const [detected, finderPath] = await Promise.all([
     Promise.all(editorDefinitions.map(async (editor) => {
@@ -235,6 +256,17 @@ async function openDirectoryWithEditor(settings, directoryPath, editorIdOverride
     if (!appPath) {
       throw new Error(`${definition.name} is not installed.`);
     }
+
+    const directoryCli = await findEditorDirectoryCli(definition, appPath);
+    if (directoryCli) {
+      await execFileAsync(directoryCli, [directoryPath], {
+        encoding: "utf8",
+        maxBuffer: 128 * 1024,
+        timeout: 10_000
+      });
+      return;
+    }
+
     args.push("-b", definition.bundleId);
   }
   args.push(directoryPath);

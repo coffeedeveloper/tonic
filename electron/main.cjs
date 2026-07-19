@@ -4,7 +4,8 @@ const {
   clipboard,
   dialog,
   ipcMain,
-  Menu
+  Menu,
+  nativeImage
 } = require("electron");
 const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
@@ -620,7 +621,8 @@ async function chooseCustomEditor() {
     throw new PublicError("Please choose a valid macOS application.");
   }
 
-  return customEditorOption(appPath);
+  const [editor] = await editorOptionsWithIcons([customEditorOption(appPath)]);
+  return editor;
 }
 
 async function settingsWithAvailableCustomEditor(settings) {
@@ -650,7 +652,12 @@ async function editorOptionsWithIcons(editors) {
       }
 
       try {
-        const icon = await app.getFileIcon(editor.appPath, { size: "normal" });
+        const icon = process.platform === "darwin"
+          ? await nativeImage.createThumbnailFromPath(editor.appPath, {
+              width: 64,
+              height: 64
+            })
+          : await app.getFileIcon(editor.appPath, { size: "normal" });
         return {
           ...editor,
           iconDataUrl: icon.isEmpty() ? null : icon.toDataURL()

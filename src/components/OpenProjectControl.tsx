@@ -239,7 +239,7 @@ function EditorIcon({ editor, compact = false }: { editor: EditorOption | null; 
   const FallbackIcon =
     editor?.id === "system"
       ? FolderOpen
-      : editor?.id === "terminal" || editor?.id === "warp"
+      : editor?.id === "terminal" || editor?.id === "warp" || editor?.id === "cmux"
         ? SquareTerminal
         : editor?.id === "custom"
           ? AppWindow
@@ -277,8 +277,9 @@ function openTargets(editors: EditorOption[], defaultEditor: EditorOption | null
     if (editor.id === "system") return 10;
     if (editor.id === "terminal") return 20;
     if (editor.id === "warp") return 30;
+    if (editor.id === "cmux") return 40;
     if (editor.id === "custom") return 50;
-    return 40;
+    return 45;
   };
   const seen = new Set<string>();
 
