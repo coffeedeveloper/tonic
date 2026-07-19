@@ -1,56 +1,105 @@
 # tonic
 
-tonic 是一个本地优先的 macOS 桌面端工具，用项目视角统一浏览 Codex / Claude Code session 与 Git worktree。
+tonic 是一款本地优先的 macOS 桌面应用，按项目统一整理 Codex、Claude Code 会话与 Git worktree，让并行开发上下文更容易查找、比较和恢复。
 
-## 功能
+> 所有项目、会话和 Git 信息均从本机读取。tonic 不上传 prompt、摘要或 transcript。
 
-- 从本地目录添加项目，或从已有 coding-agent session 反查项目根目录
-- 在项目侧栏通过图标查看 Codex、Claude Code session 和 worktree 数量；常用项目可置顶并拖拽或用键盘排序
-- 项目面板支持拖拽调整宽度、折叠和状态记忆；路径只在项目名 hover / focus 时显示
-- 按 agent 类型筛选 session，按创建时间、更新时间或 token 用量排序，并查看模型、分支、摘要与时间信息
-- 展开 session 可查看实际工作目录、所属 worktree、对话轮数、工具调用数、Token 明细、来源、权限/沙箱模式和 CLI 版本
-- 一键复制 `codex resume <id>` / `claude --resume <id>` 恢复命令
-- 查看 worktree 的未提交文件数、分支和最后一次 commit，并用指定编辑器打开
-- 只展示当前可用的 macOS 编辑器，也可选择任意 `.app` 作为自定义编辑器
-- 支持中英文界面、跟随系统/浅色/深色主题，以及设置开机启动
-- 支持 `⌘O` 添加项目、`⌘1` / `⌘2` 切换列表、`⌘\` 折叠项目面板、`⌘,` 打开设置
+## 主要功能
 
-## 本地开发
+### 项目管理
 
-需要 Node.js 22.13+、pnpm，以及 macOS 自带的 Git。Codex 的快速索引读取还会优先使用系统 `sqlite3`，不可用时自动回退到 JSONL。
+- 添加本地目录，或从已有 coding-agent 会话自动发现项目
+- 查看每个项目的 Codex 会话、Claude Code 会话和 worktree 数量
+- 置顶、拖拽或使用键盘调整常用项目顺序
+- 调整或折叠项目侧栏，并保留界面状态
+
+### 会话浏览
+
+- 按 agent 类型筛选，按创建时间、更新时间或 Token 用量排序
+- 查看模型、分支、摘要、工作目录、所属 worktree 和时间信息
+- 展开查看对话轮数、工具调用数、Token 明细、来源、权限/沙箱模式和 CLI 版本
+- 一键复制 `codex resume <id>` 或 `claude --resume <id>` 恢复命令
+
+### Worktree 与桌面体验
+
+- 查看 worktree 的分支、未提交文件数和最后一次 commit
+- 使用已安装的编辑器打开项目，也可选择任意 macOS `.app`
+- 支持中英文、跟随系统/浅色/深色主题和开机启动
+- 支持常用快捷键：
+
+| 快捷键 | 操作 |
+| --- | --- |
+| `⌘O` | 添加项目 |
+| `⌘1` | 切换到会话列表 |
+| `⌘2` | 切换到 worktree 列表 |
+| `⌘\` | 展开或折叠项目侧栏 |
+| `⌘,` | 打开设置 |
+
+## 本地运行
+
+### 环境要求
+
+- macOS
+- Node.js 22.13 或更高版本
+- pnpm 11.15.0（以 `package.json` 中的 `packageManager` 为准）
+- macOS 自带的 Git
+
+Codex 会话扫描会优先使用系统 `/usr/bin/sqlite3` 加速索引读取；不可用时自动回退到 JSONL 数据。
 
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-常用检查：
+应用启动后，可以手动添加项目，也可以扫描现有 Codex / Claude Code 会话并自动发现对应项目。
+
+## 开发命令
+
+| 命令 | 用途 |
+| --- | --- |
+| `pnpm dev` | 启动 Vite 开发服务器和 Electron 应用 |
+| `pnpm lint` | 对所有 TypeScript 项目执行类型检查 |
+| `pnpm check:electron` | 检查 Electron CommonJS 模块语法 |
+| `pnpm build` | 类型检查并生成 Vite 生产构建 |
+| `pnpm package` | 构建并生成 macOS DMG / ZIP 安装包 |
+
+提交前建议运行：
 
 ```bash
 pnpm lint
 pnpm check:electron
 pnpm build
-pnpm package
+git diff --check
 ```
 
-## 数据来源与隐私
+仓库目前没有自动化测试套件或 `pnpm test` 命令。
 
-tonic 只读取本机数据：
+## 数据与隐私
 
-- Codex：`$CODEX_HOME`，默认 `~/.codex`
-- Claude Code：`$CLAUDE_CONFIG_DIR`，默认 `~/.claude`
-- Git：已登记项目中的 repository / worktree 元数据
+tonic 仅处理以下本机数据：
 
-项目清单和设置保存在 Electron 的 `userData` 目录中。session 的 prompt、摘要和 transcript 不会被复制进 tonic 的持久化存储，也不会上传到网络。删除项目只会移除 tonic 内的登记记录，不会删除目录、session 或 worktree。
+| 来源 | 默认位置或范围 | 用途 |
+| --- | --- | --- |
+| Codex | `$CODEX_HOME`，默认 `~/.codex` | 读取本地会话元数据 |
+| Claude Code | `$CLAUDE_CONFIG_DIR`，默认 `~/.claude` | 读取本地会话元数据 |
+| Git | 已登记项目的 repository / worktree | 读取分支、状态和 commit 信息 |
+| tonic | Electron `userData` 目录 | 保存项目清单与应用设置 |
 
-## 工程结构
+- prompt、摘要和 transcript 不会被复制到 tonic 的持久化存储，也不会上传到网络
+- 移除项目只会删除 tonic 中的登记记录，不会删除本地目录、会话或 worktree
+- tonic 不包含遥测或远程数据同步
+
+## 技术架构
+
+tonic 使用 Electron、React、Vite 和 TypeScript 构建。渲染层负责界面与交互；文件系统、Git、SQLite 和 macOS 原生能力均保留在 Electron 主进程中。
 
 ```text
-electron/       Electron 主进程、IPC、本地扫描与 Git/编辑器服务
-src/            React 渲染层、组件、样式和共享类型
-scripts/        本地开发启动脚本
-dist/           Vite 生产构建产物（生成）
-release/        electron-builder 打包产物（生成）
+electron/       Electron 主进程、preload、IPC、本地扫描与原生服务
+src/            React 渲染层、组件、hooks、样式与共享类型
+scripts/        本地开发脚本
+assets/         应用图标
+dist/           Vite 构建产物（生成，不提交）
+release/        electron-builder 打包产物（生成，不提交）
 ```
 
-窗口采用 `contextIsolation` + sandbox preload，渲染层只能调用白名单 IPC；Git、编辑器和 SQLite 命令均通过参数数组执行，不拼接 shell 命令。
+应用保持 `contextIsolation: true`、`nodeIntegration: false` 和 `sandbox: true`。渲染层只能调用 preload 暴露的白名单 API；主进程会验证 IPC 输入，并通过固定可执行文件与参数数组调用 Git、编辑器和 SQLite，避免拼接 shell 命令。
