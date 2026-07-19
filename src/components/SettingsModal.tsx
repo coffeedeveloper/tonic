@@ -1,4 +1,4 @@
-import { Check, LoaderCircle, X } from "lucide-react";
+import { LoaderCircle, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, MouseEvent } from "react";
 import { useI18n } from "../i18n";
@@ -205,58 +205,40 @@ export function SettingsModal({
               <p>{t("settings.editorHint")}</p>
             </div>
 
-            <div className="editor-choice-group" role="radiogroup" aria-label={t("settings.editorAria")}>
-              <div className="editor-options">
-                {availableEditors.map((editor) => (
-                  <label
-                    className={`editor-option ${draft.editorId === editor.id ? "selected" : ""}`}
-                    key={editor.id}
-                  >
-                    <input
-                      type="radio"
-                      name="editor"
-                      value={editor.id}
-                      checked={draft.editorId === editor.id}
-                      onChange={() => setDraft((current) => ({ ...current, editorId: editor.id }))}
-                    />
-                    <span className="editor-check" aria-hidden="true">
-                      {draft.editorId === editor.id ? <Check size={13} /> : null}
-                    </span>
-                    <span className="editor-copy">
-                      <strong>{editorName(editor)}</strong>
-                      <span>
-                        {editor.id === "system"
-                          ? t("settings.systemHandler")
-                          : editor.appPath || editor.name}
-                      </span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-
-              <div className={`custom-editor-row ${draft.editorId === "custom" ? "selected" : ""}`}>
-                <button
-                  className="custom-editor-choice"
-                  type="button"
-                  role="radio"
-                  aria-checked={draft.editorId === "custom"}
-                  disabled={!customEditorPath || saving || choosingCustomEditor}
-                  onClick={() =>
+            <div className="editor-choice-group">
+              <label className="editor-select-field">
+                <span className="sr-only">{t("settings.editorAria")}</span>
+                <select
+                  className="settings-select"
+                  value={draft.editorId}
+                  onChange={(event) => {
+                    const editorId = event.target.value;
                     setDraft((current) => ({
                       ...current,
-                      editorId: "custom",
-                      customEditorPath
-                    }))
-                  }
+                      editorId,
+                      customEditorPath:
+                        editorId === "custom" ? customEditorPath : current.customEditorPath
+                    }));
+                  }}
                 >
-                  <span className="editor-check" aria-hidden="true">
-                    {draft.editorId === "custom" ? <Check size={13} /> : null}
-                  </span>
-                  <span className="custom-editor-copy">
-                    <strong>{customEditorName || t("settings.customEditor")}</strong>
-                    <span>{customEditorPath || t("settings.customEditorHint")}</span>
-                  </span>
-                </button>
+                  {availableEditors.map((editor) => (
+                    <option key={editor.id} value={editor.id}>
+                      {editorName(editor)}
+                    </option>
+                  ))}
+                  {customEditorPath ? (
+                    <option value="custom">
+                      {t("settings.customEditor")} · {customEditorName}
+                    </option>
+                  ) : null}
+                </select>
+              </label>
+
+              <div className="custom-editor-row">
+                <span className="custom-editor-copy">
+                  <strong>{customEditorName || t("settings.customEditor")}</strong>
+                  <span>{customEditorPath || t("settings.customEditorHint")}</span>
+                </span>
                 <button
                   className="secondary-button"
                   type="button"

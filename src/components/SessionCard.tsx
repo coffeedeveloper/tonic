@@ -65,6 +65,13 @@ export function SessionCard({
     { name: title }
   );
   const detailsTooltipProps = tooltipProps(detailsLabel, "left");
+  const resumeLabel = copied
+    ? t("session.copied")
+    : t("session.resumeAria", { name: title });
+  const resumeTooltipProps = tooltipProps(
+    copied ? t("session.copied") : t("session.resume"),
+    "left"
+  );
 
   return (
     <article
@@ -198,8 +205,12 @@ export function SessionCard({
           className={`record-action-button ${copied ? "copied" : ""}`}
           type="button"
           disabled={copying}
-          aria-label={t("session.resumeAria", { name: title })}
-          onClick={onResume}
+          aria-label={resumeLabel}
+          {...resumeTooltipProps}
+          onClick={() => {
+            resumeTooltipProps.onMouseLeave();
+            onResume();
+          }}
         >
           {copying ? (
             <LoaderCircle className="spin" size={15} aria-hidden="true" />
@@ -208,7 +219,6 @@ export function SessionCard({
           ) : (
             <Copy size={15} aria-hidden="true" />
           )}
-          {copied ? t("session.copied") : t("session.resume")}
         </button>
       </div>
 

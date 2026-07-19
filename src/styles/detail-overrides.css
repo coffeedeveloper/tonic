@@ -367,8 +367,12 @@
 }
 
 .session-card .record-action-button {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
   min-height: 34px;
   border-radius: 9px;
+  padding: 0;
 }
 
 .session-detail-panel {
