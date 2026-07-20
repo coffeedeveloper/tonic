@@ -27,6 +27,11 @@ export interface ProjectSummary {
   pinned: boolean;
 }
 
+export interface ProjectPinState {
+  id: string;
+  pinned: boolean;
+}
+
 export interface SessionTokenBreakdown {
   input: number | null;
   output: number | null;
@@ -113,8 +118,8 @@ export interface TonicApi {
   chooseProject: () => Promise<ProjectSummary | null>;
   scanProjects: () => Promise<ScanResult>;
   removeProject: (projectId: string) => Promise<ProjectSummary[]>;
-  setProjectPinned: (projectId: string, pinned: boolean) => Promise<ProjectSummary[]>;
-  reorderPinnedProjects: (projectIds: string[]) => Promise<ProjectSummary[]>;
+  setProjectPinned: (projectId: string, pinned: boolean) => Promise<ProjectPinState[]>;
+  reorderPinnedProjects: (projectIds: string[]) => Promise<ProjectPinState[]>;
   getProjectDetails: (projectId: string) => Promise<ProjectDetails>;
   openDirectory: (directoryPath: string, editorId?: string | null) => Promise<void>;
   copyResumeCommand: (session: Pick<SessionRecord, "agent" | "id">) => Promise<string>;

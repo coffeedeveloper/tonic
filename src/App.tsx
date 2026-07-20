@@ -21,6 +21,7 @@ import type {
   DetailTab,
   EditorOption,
   ProjectDetails,
+  ProjectPinState,
   ProjectSummary,
   SessionRecord,
   SessionSort,
@@ -45,7 +46,71 @@ function mergeProject(projects: ProjectSummary[], project: ProjectSummary) {
     return [...projects, project];
   }
 
-  return projects.map((item) => (item.id === project.id ? project : item));
+  return projects.map((item) =>
+    item.id === project.id ? { ...project, pinned: item.pinned } : item
+  );
+}
+
+function setProjectPinnedOptimistically(
+  projects: ProjectSummary[],
+  projectId: string,
+  pinned: boolean
+) {
+  const nextProjects = projects.map((project) =>
+    project.id === projectId ? { ...project, pinned } : project
+  );
+  return [
+    ...nextProjects.filter((project) => project.pinned),
+    ...nextProjects.filter((project) => !project.pinned)
+  ];
+}
+
+function applyProjectPinStates(projects: ProjectSummary[], pinStates: ProjectPinState[]) {
+  const stateById = new Map(pinStates.map((state) => [state.id, state]));
+  const orderById = new Map(pinStates.map((state, index) => [state.id, index]));
+
+  return projects
+    .map((project, index) => ({
+      project: stateById.has(project.id)
+        ? { ...project, pinned: stateById.get(project.id)?.pinned ?? project.pinned }
+        : project,
+      index
+    }))
+    .sort((left, right) => {
+      const leftOrder = orderById.get(left.project.id);
+      const rightOrder = orderById.get(right.project.id);
+      if (leftOrder !== undefined && rightOrder !== undefined) {
+        return leftOrder - rightOrder;
+      }
+      if (leftOrder !== undefined) {
+        return -1;
+      }
+      if (rightOrder !== undefined) {
+        return 1;
+      }
+      return left.index - right.index;
+    })
+    .map(({ project }) => project);
+}
+
+function reorderPinnedProjects(projects: ProjectSummary[], projectIds: string[]) {
+  const orderById = new Map(projectIds.map((projectId, index) => [projectId, index]));
+  return projects
+    .map((project, index) => ({ project, index }))
+    .sort((left, right) => {
+      if (left.project.pinned !== right.project.pinned) {
+        return Number(right.project.pinned) - Number(left.project.pinned);
+      }
+      if (left.project.pinned) {
+        return (
+          (orderById.get(left.project.id) ?? Number.MAX_SAFE_INTEGER) -
+            (orderById.get(right.project.id) ?? Number.MAX_SAFE_INTEGER) ||
+          left.index - right.index
+        );
+      }
+      return left.index - right.index;
+    })
+    .map(({ project }) => project);
 }
 
 export function App() {
@@ -74,6 +139,7 @@ export function App() {
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const toastIdRef = useRef(0);
   const copyResetTimerRef = useRef<number | null>(null);
+  const projectPinMutationRef = useRef(0);
   const { tooltip, getTooltipProps, hideTooltip } = useTooltip();
 
   useAppTheme(settings.theme);
@@ -269,11 +335,22 @@ export function App() {
 
   const handleSetProjectPinned = useCallback(
     async (projectId: string, pinned: boolean) => {
+      const mutationId = projectPinMutationRef.current + 1;
+      projectPinMutationRef.current = mutationId;
+      setProjects((current) => setProjectPinnedOptimistically(current, projectId, pinned));
+
       try {
-        const nextProjects = await api.setProjectPinned(projectId, pinned);
-        setProjects(nextProjects);
+        const pinStates = await api.setProjectPinned(projectId, pinned);
+        if (projectPinMutationRef.current === mutationId) {
+          setProjects((current) => applyProjectPinStates(current, pinStates));
+        }
       } catch (error) {
-        showToast("error", errorMessage(error));
+        if (projectPinMutationRef.current === mutationId) {
+          setProjects((current) =>
+            setProjectPinnedOptimistically(current, projectId, !pinned)
+          );
+          showToast("error", errorMessage(error));
+        }
       }
     },
     [showToast]
@@ -281,33 +358,23 @@ export function App() {
 
   const handleReorderPinnedProjects = useCallback(
     async (projectIds: string[]) => {
-      const previousProjects = projects;
-      const orderById = new Map(projectIds.map((projectId, index) => [projectId, index]));
-      setProjects((current) =>
-        current
-          .map((project, index) => ({ project, index }))
-          .sort((left, right) => {
-            if (left.project.pinned !== right.project.pinned) {
-              return Number(right.project.pinned) - Number(left.project.pinned);
-            }
-            if (left.project.pinned) {
-              return (
-                (orderById.get(left.project.id) ?? Number.MAX_SAFE_INTEGER) -
-                  (orderById.get(right.project.id) ?? Number.MAX_SAFE_INTEGER) ||
-                left.index - right.index
-              );
-            }
-            return left.index - right.index;
-          })
-          .map(({ project }) => project)
-      );
+      const previousProjectIds = projects
+        .filter((project) => project.pinned)
+        .map((project) => project.id);
+      const mutationId = projectPinMutationRef.current + 1;
+      projectPinMutationRef.current = mutationId;
+      setProjects((current) => reorderPinnedProjects(current, projectIds));
 
       try {
-        const nextProjects = await api.reorderPinnedProjects(projectIds);
-        setProjects(nextProjects);
+        const pinStates = await api.reorderPinnedProjects(projectIds);
+        if (projectPinMutationRef.current === mutationId) {
+          setProjects((current) => applyProjectPinStates(current, pinStates));
+        }
       } catch (error) {
-        setProjects(previousProjects);
-        showToast("error", errorMessage(error));
+        if (projectPinMutationRef.current === mutationId) {
+          setProjects((current) => reorderPinnedProjects(current, previousProjectIds));
+          showToast("error", errorMessage(error));
+        }
       }
     },
     [projects, showToast]
