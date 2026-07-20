@@ -1,6 +1,7 @@
 import type {
   BootstrapData,
   ProjectDetails,
+  ProjectPinState,
   ProjectSummary,
   ScanResult,
   Settings,
@@ -51,11 +52,11 @@ const browserFallback: TonicApi = {
   async removeProject(): Promise<ProjectSummary[]> {
     return fallbackBootstrap.projects;
   },
-  async setProjectPinned(): Promise<ProjectSummary[]> {
-    return fallbackBootstrap.projects;
+  async setProjectPinned(): Promise<ProjectPinState[]> {
+    return [];
   },
-  async reorderPinnedProjects(): Promise<ProjectSummary[]> {
-    return fallbackBootstrap.projects;
+  async reorderPinnedProjects(): Promise<ProjectPinState[]> {
+    return [];
   },
   async getProjectDetails(): Promise<ProjectDetails> {
     throw new Error("Project details are only available in the tonic desktop app.");

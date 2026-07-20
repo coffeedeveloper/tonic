@@ -293,8 +293,8 @@ async function makeProjectSummary(project, sessions, knownWorktrees) {
   };
 }
 
-async function makeProjectSummaries(state, sessions) {
-  const orderedProjects = state.projects
+function orderedProjects(state) {
+  return state.projects
     .map((project, index) => ({ project, index }))
     .sort((left, right) => {
       if (left.project.pinned !== right.project.pinned) {
@@ -311,9 +311,20 @@ async function makeProjectSummaries(state, sessions) {
       const addedDifference =
         Date.parse(left.project.addedAt) - Date.parse(right.project.addedAt);
       return addedDifference || left.index - right.index;
-    });
+    })
+    .map(({ project }) => project);
+}
+
+function makeProjectPinStates(state) {
+  return orderedProjects(state).map((project) => ({
+    id: project.id,
+    pinned: Boolean(project.pinned)
+  }));
+}
+
+async function makeProjectSummaries(state, sessions) {
   const summaries = [];
-  for (const { project } of orderedProjects) {
+  for (const project of orderedProjects(state)) {
     summaries.push(await makeProjectSummary(project, sessions));
   }
   return summaries;
@@ -440,8 +451,7 @@ async function setProjectPinned(projectId, pinned) {
     throw new PublicError("Project not found.");
   }
 
-  const sessions = await loadSessions({ tolerateFailure: true });
-  return makeProjectSummaries(state, sessions);
+  return makeProjectPinStates(state);
 }
 
 async function reorderPinnedProjects(value) {
@@ -463,8 +473,7 @@ async function reorderPinnedProjects(value) {
     }
   });
 
-  const sessions = await loadSessions({ tolerateFailure: true });
-  return makeProjectSummaries(state, sessions);
+  return makeProjectPinStates(state);
 }
 
 async function getProjectDetails(projectId) {
