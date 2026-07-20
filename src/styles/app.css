@@ -1058,7 +1058,7 @@ time[tabindex],
   font-size: 11px;
 }
 
-.launch-setting {
+.toggle-setting {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -1070,21 +1070,21 @@ time[tabindex],
   padding: 11px 12px;
 }
 
-.launch-setting > span:first-child {
+.toggle-setting > span:first-child {
   display: grid;
   gap: 3px;
 }
 
-.launch-setting strong {
+.toggle-setting strong {
   font-size: 12px;
 }
 
-.launch-setting small {
+.toggle-setting small {
   color: var(--text-muted);
   font-size: 10px;
 }
 
-.launch-setting input {
+.toggle-setting input {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -1113,15 +1113,15 @@ time[tabindex],
   transition: transform 0.15s ease;
 }
 
-.launch-setting input:checked + .switch {
+.toggle-setting input:checked + .switch {
   background: var(--focus);
 }
 
-.launch-setting input:checked + .switch::after {
+.toggle-setting input:checked + .switch::after {
   transform: translateX(14px);
 }
 
-.launch-setting:has(input:focus-visible) {
+.toggle-setting:has(input:focus-visible) {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }

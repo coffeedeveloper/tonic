@@ -17,6 +17,7 @@ const {
   openDirectoryWithEditor,
   resolveApplicationBundle
 } = require("./editors.cjs");
+const { buildResumeCommand } = require("./resume-command.cjs");
 const {
   canonicalProjectPath,
   listWorktrees,
@@ -134,6 +135,7 @@ function assertSettings(value) {
         value.customEditorPath.includes("\0") ||
         !path.isAbsolute(value.customEditorPath))) ||
     typeof value.launchAtLogin !== "boolean" ||
+    typeof value.yoloMode !== "boolean" ||
     (value.language !== "en" && value.language !== "zh") ||
     (value.theme !== "system" && value.theme !== "light" && value.theme !== "dark")
   ) {
@@ -147,6 +149,7 @@ function assertSettings(value) {
         ? path.normalize(value.customEditorPath)
         : null,
     launchAtLogin: value.launchAtLogin,
+    yoloMode: value.yoloMode,
     language: value.language,
     theme: value.theme
   };
@@ -547,7 +550,10 @@ async function openDirectory(directoryPath, editorId = null) {
 
 async function copyResumeCommand(value) {
   const session = assertResumeSession(value);
-  const sessions = await loadSessions({ tolerateFailure: false });
+  const [sessions, state] = await Promise.all([
+    loadSessions({ tolerateFailure: false }),
+    stateStore.read()
+  ]);
   const exists = sessions.some(
     (candidate) => candidate?.agent === session.agent && candidate?.id === session.id
   );
@@ -555,10 +561,7 @@ async function copyResumeCommand(value) {
     throw new PublicError("Session not found.");
   }
 
-  const command =
-    session.agent === "claude"
-      ? `claude --resume ${session.id}`
-      : `codex resume ${session.id}`;
+  const command = buildResumeCommand(session, state.settings.yoloMode);
   clipboard.writeText(command);
   return command;
 }

@@ -36,6 +36,7 @@ const initialSettings: Settings = {
   editorId: "auto",
   customEditorPath: null,
   launchAtLogin: false,
+  yoloMode: false,
   language: "en",
   theme: "system"
 };

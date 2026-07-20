@@ -1,11 +1,12 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
-const STORE_VERSION = 3;
+const STORE_VERSION = 4;
 const defaultSettings = Object.freeze({
   editorId: "auto",
   customEditorPath: null,
   launchAtLogin: false,
+  yoloMode: false,
   language: "en",
   theme: "system"
 });
@@ -32,6 +33,7 @@ function normalizeSettings(value) {
     editorId,
     customEditorPath,
     launchAtLogin: Boolean(value?.launchAtLogin),
+    yoloMode: Boolean(value?.yoloMode),
     language: value?.language === "zh" ? "zh" : "en",
     theme:
       value?.theme === "light" || value?.theme === "dark"

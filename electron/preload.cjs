@@ -52,6 +52,7 @@ const tonicApi = Object.freeze({
       editorId: settings?.editorId,
       customEditorPath: settings?.customEditorPath,
       launchAtLogin: settings?.launchAtLogin,
+      yoloMode: settings?.yoloMode,
       language: settings?.language,
       theme: settings?.theme
     }),

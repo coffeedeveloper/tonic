@@ -97,6 +97,7 @@ export interface Settings {
   editorId: string;
   customEditorPath: string | null;
   launchAtLogin: boolean;
+  yoloMode: boolean;
   language: AppLanguage;
   theme: AppTheme;
 }

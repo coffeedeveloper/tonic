@@ -14,6 +14,7 @@ const fallbackBootstrap: BootstrapData = {
     editorId: "auto",
     customEditorPath: null,
     launchAtLogin: false,
+    yoloMode: false,
     language: "en",
     theme: "system"
   },
@@ -63,15 +64,23 @@ const browserFallback: TonicApi = {
   },
   async openDirectory() {},
   async copyResumeCommand(session) {
-    return session.agent === "claude"
+    const command = session.agent === "claude"
       ? `claude --resume ${session.id}`
       : `codex resume ${session.id}`;
+    if (!fallbackBootstrap.settings.yoloMode) {
+      return command;
+    }
+    return session.agent === "claude"
+      ? `${command} --allow-dangerously-skip-permissions --permission-mode auto`
+      : `${command} --dangerously-bypass-approvals-and-sandbox`;
   },
   async chooseCustomEditor() {
     return null;
   },
   async saveSettings(settings: Settings) {
-    return settings;
+    const savedSettings = { ...settings };
+    fallbackBootstrap.settings = savedSettings;
+    return savedSettings;
   },
   onChooseProject() {
     return () => undefined;

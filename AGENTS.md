@@ -15,6 +15,7 @@ Use Node.js 22.13 or newer and the pnpm version declared in `package.json`. Run 
 ```bash
 pnpm install             # install dependencies from pnpm-lock.yaml
 pnpm dev                 # start Vite and the real Electron shell
+pnpm test                # run focused Node.js behavior tests
 pnpm lint                # type-check all TypeScript projects without output
 pnpm check:electron      # syntax-check every Electron CommonJS module
 pnpm build               # type-check and create the Vite production build
@@ -23,7 +24,7 @@ pnpm package             # build and create macOS dmg/zip artifacts
 
 Use `pnpm install --frozen-lockfile` when validating an unchanged dependency graph. When dependency declarations intentionally change, regenerate and commit `pnpm-lock.yaml` with the matching pnpm version. Build-script permissions are an explicit allowlist in `pnpm-workspace.yaml`; approve only the package that actually needs a script, never all pending packages by default.
 
-There is currently no automated test suite or `pnpm test` script. Do not claim tests ran when only type, syntax, build, or manual checks were performed. Add focused tests and a documented test command when introducing code that benefits from repeatable behavioral coverage.
+Focused behavior tests use the built-in Node.js test runner and live in `test/`. Keep them small and close to pure Electron helpers or persistence behavior. Do not claim tests ran when only type, syntax, build, or manual checks were performed.
 
 ## Coding Style & Naming Conventions
 
@@ -38,6 +39,7 @@ Treat the desktop API as one contract. Any IPC capability change must be kept co
 For every code change, run the smallest relevant checks and report the exact commands used. The normal pre-commit baseline is:
 
 ```bash
+pnpm test
 pnpm lint
 pnpm check:electron
 pnpm build

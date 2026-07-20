@@ -12,7 +12,8 @@
     "dev": "node scripts/dev.mjs",
     "build": "tsc -b && vite build",
     "lint": "tsc -b --noEmit",
-    "check:electron": "node --check electron/main.cjs && node --check electron/preload.cjs && node --check electron/store.cjs && node --check electron/session-scanner.cjs && node --check electron/git-service.cjs && node --check electron/editors.cjs",
+    "test": "node --test test/*.test.cjs",
+    "check:electron": "node --check electron/main.cjs && node --check electron/preload.cjs && node --check electron/store.cjs && node --check electron/session-scanner.cjs && node --check electron/git-service.cjs && node --check electron/editors.cjs && node --check electron/resume-command.cjs",
     "package": "pnpm build && electron-builder"
   },
   "keywords": [

@@ -255,7 +255,31 @@ export function SettingsModal({
           </section>
 
           <section className="settings-section">
-            <label className="launch-setting">
+            <div className="settings-heading">
+              <h3>{t("settings.agentCommands")}</h3>
+            </div>
+
+            <label className="toggle-setting">
+              <span>
+                <strong>{t("settings.yoloMode")}</strong>
+                <small>{t("settings.yoloModeHint")}</small>
+              </span>
+              <input
+                type="checkbox"
+                checked={draft.yoloMode}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    yoloMode: event.target.checked
+                  }))
+                }
+              />
+              <span className="switch" aria-hidden="true" />
+            </label>
+          </section>
+
+          <section className="settings-section">
+            <label className="toggle-setting">
               <span>
                 <strong>{t("settings.login")}</strong>
                 <small>{t("settings.loginHint")}</small>
