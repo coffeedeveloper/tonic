@@ -21,6 +21,9 @@
   --border-control: #d4cabe;
   --hover: #f0ebe4;
   --selected: #f3efe7;
+  --pinned-bg: #fbf2e7;
+  --pinned-hover: #f5e7d7;
+  --pinned-border: #ead7bf;
   --primary: #111318;
   --primary-hover: #2a2d33;
   --accent: #a25f2b;

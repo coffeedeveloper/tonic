@@ -22,6 +22,9 @@
   --border-control: #484d57;
   --hover: #2d3138;
   --selected: #30343a;
+  --pinned-bg: #29241f;
+  --pinned-hover: #332a23;
+  --pinned-border: #4b3a2d;
   --primary: #f0ebe3;
   --primary-hover: #ffffff;
   --primary-contrast: #181a1e;
@@ -81,6 +84,18 @@ body {
   padding-right: 84px;
 }
 
+.project-card.pinned {
+  border-color: var(--pinned-border);
+  background: var(--pinned-bg);
+}
+
+.project-card.pinned:hover,
+.project-card.pinned:focus-within,
+.project-card.pinned.selected {
+  border-color: color-mix(in srgb, var(--pinned-border) 72%, var(--accent));
+  background: var(--pinned-hover);
+}
+
 .project-card-actions {
   position: absolute;
   z-index: 2;
@@ -126,6 +141,22 @@ body {
     background-color 0.15s ease,
     color 0.15s ease,
     opacity 0.15s ease;
+}
+
+.project-card .project-pin-button,
+.project-card .project-drag-handle {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.project-card:hover .project-pin-button,
+.project-card:focus-within .project-pin-button,
+.project-card:hover .project-drag-handle,
+.project-card:focus-within .project-drag-handle {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .project-drag-handle:hover,

@@ -53,7 +53,6 @@ export function ProjectSidebar({
 }: ProjectSidebarProps) {
   const { t } = useI18n();
   const [confirmProjectId, setConfirmProjectId] = useState<string | null>(null);
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null);
   const [dragTarget, setDragTarget] = useState<{
     projectId: string;
@@ -255,7 +254,6 @@ export function ProjectSidebar({
             const isSelected = project.id === selectedProjectId;
             const isConfirming = project.id === confirmProjectId;
             const isRemoving = project.id === removingProjectId;
-            const showsPin = project.pinned || activeProjectId === project.id;
             const pathTooltip = tooltipProps(project.path, "right", true);
             const dropEdge =
               dragTarget?.projectId === project.id ? dragTarget.edge : null;
@@ -269,18 +267,6 @@ export function ProjectSidebar({
                 } ${dropEdge ? `drag-over-${dropEdge}` : ""}`}
                 key={project.id}
                 data-project-id={project.id}
-                onMouseEnter={() => setActiveProjectId(project.id)}
-                onMouseLeave={(event) => {
-                  if (!event.currentTarget.contains(document.activeElement)) {
-                    setActiveProjectId(null);
-                  }
-                }}
-                onFocus={() => setActiveProjectId(project.id)}
-                onBlur={(event) => {
-                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                    setActiveProjectId(null);
-                  }
-                }}
               >
                 <button
                   className="project-card-main"
@@ -344,7 +330,6 @@ export function ProjectSidebar({
                       disabled={!onReorderPinnedProjects}
                       aria-label={t("sidebar.reorder", { name: project.name })}
                       aria-describedby={dragInstructionsId}
-                      {...tooltipProps(t("sidebar.reorderTooltip"), "left")}
                       onKeyDown={(event) => handleReorderKeyDown(event, project.id)}
                       onPointerDown={(event) => {
                         if (event.button !== 0 || !onReorderPinnedProjects) {
@@ -359,29 +344,27 @@ export function ProjectSidebar({
                       <GripVertical size={14} aria-hidden="true" />
                     </button>
                   ) : null}
-                  {showsPin ? (
-                    <button
-                      className={`project-pin-button ${project.pinned ? "pinned" : ""}`}
-                      type="button"
-                      aria-label={t(project.pinned ? "sidebar.unpin" : "sidebar.pin", {
+                  <button
+                    className={`project-pin-button ${project.pinned ? "pinned" : ""}`}
+                    type="button"
+                    aria-label={t(project.pinned ? "sidebar.unpin" : "sidebar.pin", {
+                      name: project.name
+                    })}
+                    aria-pressed={project.pinned}
+                    {...tooltipProps(
+                      t(project.pinned ? "sidebar.unpin" : "sidebar.pin", {
                         name: project.name
-                      })}
-                      aria-pressed={project.pinned}
-                      {...tooltipProps(
-                        t(project.pinned ? "sidebar.unpin" : "sidebar.pin", {
-                          name: project.name
-                        }),
-                        "left"
-                      )}
-                      onClick={() => onSetProjectPinned?.(project.id, !project.pinned)}
-                    >
-                      {project.pinned ? (
-                        <PinOff size={14} aria-hidden="true" />
-                      ) : (
-                        <Pin size={14} aria-hidden="true" />
-                      )}
-                    </button>
-                  ) : null}
+                      }),
+                      "left"
+                    )}
+                    onClick={() => onSetProjectPinned?.(project.id, !project.pinned)}
+                  >
+                    {project.pinned ? (
+                      <PinOff size={14} aria-hidden="true" />
+                    ) : (
+                      <Pin size={14} aria-hidden="true" />
+                    )}
+                  </button>
                   <button
                     className="project-delete-button"
                     type="button"
