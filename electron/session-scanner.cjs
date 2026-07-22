@@ -933,6 +933,26 @@ async function resolveWorktreePath(inputPath, resolveWorktree, cache) {
   return typeof value === "string" && path.isAbsolute(value) ? value : "";
 }
 
+async function resolveSessionPaths(
+  inputPath,
+  canonicalize,
+  resolveWorktree,
+  projectPathCache,
+  worktreePathCache
+) {
+  const worktreePath = await resolveWorktreePath(
+    inputPath,
+    resolveWorktree,
+    worktreePathCache
+  );
+  const projectPath = await resolveProjectPath(
+    worktreePath || inputPath,
+    canonicalize,
+    projectPathCache
+  );
+  return { projectPath, worktreePath };
+}
+
 function strictSession(session) {
   const workingDirectory =
     typeof session.workingDirectory === "string" && session.workingDirectory.trim()
@@ -1006,10 +1026,13 @@ function createSessionScanner({ canonicalProjectPath, worktreeRootPath } = {}) {
 
       const transcript = transcriptById.get(row.id) || {};
       const cwd = transcript.cwd || (typeof row.cwd === "string" ? row.cwd : "");
-      const [projectPath, worktreePath] = await Promise.all([
-        resolveProjectPath(cwd, canonicalProjectPath, projectPathCache),
-        resolveWorktreePath(cwd, worktreeRootPath, worktreePathCache)
-      ]);
+      const { projectPath, worktreePath } = await resolveSessionPaths(
+        cwd,
+        canonicalProjectPath,
+        worktreeRootPath,
+        projectPathCache,
+        worktreePathCache
+      );
       const firstPrompt = cleanText(row.first_user_message, 8_000) || transcript.firstPrompt || "";
       const databaseTokenUsage = nonNegativeInteger(row.tokens_used);
       const databaseTokenFallback =
@@ -1067,10 +1090,13 @@ function createSessionScanner({ canonicalProjectPath, worktreeRootPath } = {}) {
       ) {
         continue;
       }
-      const [projectPath, worktreePath] = await Promise.all([
-        resolveProjectPath(transcript.cwd, canonicalProjectPath, projectPathCache),
-        resolveWorktreePath(transcript.cwd, worktreeRootPath, worktreePathCache)
-      ]);
+      const { projectPath, worktreePath } = await resolveSessionPaths(
+        transcript.cwd,
+        canonicalProjectPath,
+        worktreeRootPath,
+        projectPathCache,
+        worktreePathCache
+      );
       sessions.push(
         strictSession({
           id: transcript.id,
@@ -1122,10 +1148,13 @@ function createSessionScanner({ canonicalProjectPath, worktreeRootPath } = {}) {
           (typeof indexEntry?.projectPath === "string" ? indexEntry.projectPath : "") ||
           validatedIndex.originalPath ||
           transcript.initialCwd;
-        const [projectPath, worktreePath] = await Promise.all([
-          resolveProjectPath(workingDirectory, canonicalProjectPath, projectPathCache),
-          resolveWorktreePath(workingDirectory, worktreeRootPath, worktreePathCache)
-        ]);
+        const { projectPath, worktreePath } = await resolveSessionPaths(
+          workingDirectory,
+          canonicalProjectPath,
+          worktreeRootPath,
+          projectPathCache,
+          worktreePathCache
+        );
         const firstPrompt =
           (typeof indexEntry?.firstPrompt === "string"
             ? cleanText(indexEntry.firstPrompt, 8_000)

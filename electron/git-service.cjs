@@ -120,27 +120,6 @@ async function absoluteCommonGitDirectory(worktreePath) {
   }
 }
 
-async function absoluteGitDirectory(worktreePath) {
-  try {
-    const output = await runGit([
-      "-C",
-      worktreePath,
-      "rev-parse",
-      "--path-format=absolute",
-      "--absolute-git-dir"
-    ]);
-    return normalizeGitPath(output.trim(), worktreePath);
-  } catch {
-    const output = await runGit([
-      "-C",
-      worktreePath,
-      "rev-parse",
-      "--absolute-git-dir"
-    ]);
-    return normalizeGitPath(output.trim(), worktreePath);
-  }
-}
-
 async function worktreeRootPath(inputPath) {
   if (typeof inputPath !== "string" || !inputPath.trim()) {
     throw new TypeError("A working directory is required.");
@@ -199,20 +178,14 @@ async function canonicalProjectPath(inputPath) {
   }
 
   try {
-    const worktrees = await worktreeRecordsFrom(worktreeRoot);
-    for (const worktree of worktrees) {
-      if (worktree.bare === true) {
-        continue;
-      }
-
-      try {
-        const worktreePath = await realpathOrResolved(worktree.path);
-        const gitDirectory = await absoluteGitDirectory(worktreePath);
-        if (gitDirectory === commonGitDirectory) {
-          return worktreePath;
-        }
-      } catch {
-        // A prunable worktree can disappear while Git still lists it.
+    // Git guarantees that the main worktree is the first `worktree list`
+    // record. Linked worktrees therefore resolve to the original checkout
+    // without probing every registered worktree with another Git process.
+    const [mainWorktree] = await worktreeRecordsFrom(worktreeRoot);
+    if (mainWorktree?.bare !== true && mainWorktree?.prunable !== true) {
+      const mainWorktreePath = await realpathOrResolved(mainWorktree.path);
+      if (await isExistingDirectory(mainWorktreePath)) {
+        return mainWorktreePath;
       }
     }
   } catch {
