@@ -73,6 +73,17 @@ export function formatTokenUsage(value: number | null, language: AppLanguage = "
     : `${numberFormat[language].format(value)} tokens`;
 }
 
+export function formatUsdCost(value: number, language: AppLanguage = "en") {
+  const smallValue = value > 0 && value < 0.01;
+  return new Intl.NumberFormat(language === "zh" ? "zh-CN" : "en-US", {
+    style: "currency",
+    currency: "USD",
+    currencyDisplay: "narrowSymbol",
+    minimumFractionDigits: smallValue ? 4 : 2,
+    maximumFractionDigits: smallValue ? 6 : value < 1 ? 4 : 2
+  }).format(value);
+}
+
 export function formatCount(value: number, language: AppLanguage = "en") {
   return numberFormat[language].format(value);
 }

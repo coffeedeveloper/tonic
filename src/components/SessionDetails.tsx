@@ -1,6 +1,6 @@
 import { useI18n } from "../i18n";
 import type { SessionRecord } from "../types";
-import { formatTokenUsage } from "../utils/format";
+import { formatTokenUsage, formatUsdCost } from "../utils/format";
 
 export function SessionDetails({
   id,
@@ -102,6 +102,9 @@ export function SessionDetails({
               {t("session.tokenBreakdownCodexHint")}
             </p>
           ) : null}
+          {session.estimatedCostUsd !== null ? (
+            <p className="session-token-hint">{t("session.costEstimateHint")}</p>
+          ) : null}
           <dl className="session-token-grid">
             {tokenItems.map((item) => (
               <div key={item.label}>
@@ -109,6 +112,12 @@ export function SessionDetails({
                 <dd>{formatTokenUsage(item.value, language)}</dd>
               </div>
             ))}
+            {session.estimatedCostUsd !== null ? (
+              <div>
+                <dt>{t("session.estimatedCost")}</dt>
+                <dd>{formatUsdCost(session.estimatedCostUsd, language)}</dd>
+              </div>
+            ) : null}
           </dl>
         </div>
       ) : null}

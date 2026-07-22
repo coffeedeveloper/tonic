@@ -49,6 +49,7 @@ export interface SessionRecord {
   model: string;
   branch: string;
   tokenUsage: number | null;
+  estimatedCostUsd: number | null;
   summary: string;
   firstPrompt: string;
   workingDirectory: string;

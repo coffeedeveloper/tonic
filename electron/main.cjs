@@ -193,6 +193,10 @@ function safeNonNegativeInteger(value) {
   return Number.isFinite(value) && value >= 0 ? Math.round(Number(value)) : null;
 }
 
+function safeNonNegativeNumber(value) {
+  return Number.isFinite(value) && value >= 0 ? Number(value) : null;
+}
+
 function safeTokenBreakdown(value) {
   if (!value || typeof value !== "object") return null;
   const breakdown = {
@@ -222,6 +226,7 @@ function toSessionRecord(session) {
       Number.isFinite(session?.tokenUsage) && session.tokenUsage >= 0
         ? Number(session.tokenUsage)
         : null,
+    estimatedCostUsd: safeNonNegativeNumber(session?.estimatedCostUsd),
     summary: typeof session?.summary === "string" ? session.summary : "",
     firstPrompt: typeof session?.firstPrompt === "string" ? session.firstPrompt : "",
     workingDirectory:

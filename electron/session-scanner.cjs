@@ -6,6 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const readline = require("node:readline");
 const { promisify } = require("node:util");
+const { estimateTokenCostUsd } = require("./pricing.cjs");
 
 const execFileAsync = promisify(execFile);
 const CACHE_TTL_MS = 10_000;
@@ -28,6 +29,11 @@ function finiteNumber(value) {
 function nonNegativeInteger(value) {
   const number = finiteNumber(value);
   return number === null || number < 0 ? null : Math.round(number);
+}
+
+function nonNegativeNumber(value) {
+  const number = finiteNumber(value);
+  return number === null || number < 0 ? null : number;
 }
 
 function isoTimestamp(value) {
@@ -131,6 +137,14 @@ function strictTokenBreakdown(value) {
     reasoning: nonNegativeInteger(value.reasoning)
   };
   return Object.values(breakdown).every((item) => item === null) ? null : breakdown;
+}
+
+function addTokenBreakdown(target, breakdown) {
+  for (const key of ["input", "output", "cacheRead", "cacheWrite", "reasoning"]) {
+    if (breakdown[key] !== null) {
+      target[key] = (target[key] || 0) + breakdown[key];
+    }
+  }
 }
 
 function titleFrom(value) {
@@ -438,6 +452,7 @@ async function parseCodexTranscript(filePath) {
     branch: "",
     tokenUsage: null,
     tokenBreakdown: null,
+    estimatedCostUsd: null,
     summary: "",
     firstPrompt: "",
     source: "",
@@ -456,6 +471,18 @@ async function parseCodexTranscript(filePath) {
   let eventFirstPrompt = "";
   let responseFirstPrompt = "";
   let anonymousToolCallCount = 0;
+  let accumulatedCostUsd = 0;
+  let costUsageSeen = false;
+  let costComplete = true;
+  let costTrackedTokenTotal = 0;
+  let costModelSeen = false;
+  const trackedTokenBreakdown = {
+    input: null,
+    output: null,
+    cacheRead: null,
+    cacheWrite: null,
+    reasoning: null
+  };
   const toolCallIds = new Set();
 
   await visitJsonLines(filePath, (record) => {
@@ -519,6 +546,22 @@ async function parseCodexTranscript(filePath) {
         if (total !== null) result.tokenUsage = total;
         const breakdown = tokenBreakdownFromCodexUsage(usage);
         if (breakdown) result.tokenBreakdown = breakdown;
+
+        const lastUsage = payload.info?.last_token_usage;
+        const lastTotal = tokenTotalFromCodexUsage(lastUsage);
+        const lastBreakdown = tokenBreakdownFromCodexUsage(lastUsage);
+        if (lastTotal !== null && lastTotal > 0 && lastBreakdown) {
+          costUsageSeen = true;
+          costTrackedTokenTotal += lastTotal;
+          addTokenBreakdown(trackedTokenBreakdown, lastBreakdown);
+          if (result.model.trim()) costModelSeen = true;
+          const cost = estimateTokenCostUsd(result.model, lastBreakdown);
+          if (cost === null) {
+            costComplete = false;
+          } else {
+            accumulatedCostUsd += cost;
+          }
+        }
       }
       return;
     }
@@ -554,6 +597,27 @@ async function parseCodexTranscript(filePath) {
       ? eventUserMessageCount
       : responseUserMessageCount;
   result.toolCallCount = parsedRecordCount > 0 ? toolCallIds.size : null;
+  if (costTrackedTokenTotal > (result.tokenUsage || 0)) {
+    result.tokenUsage = costTrackedTokenTotal;
+    result.tokenBreakdown = strictTokenBreakdown(trackedTokenBreakdown);
+  }
+  result.aggregateCostFallbackAllowed =
+    Boolean(result.tokenBreakdown) && (!costUsageSeen || !costModelSeen);
+  if (!costUsageSeen && result.tokenBreakdown) {
+    const fallbackCost = estimateTokenCostUsd(result.model, result.tokenBreakdown);
+    if (fallbackCost !== null) {
+      accumulatedCostUsd = fallbackCost;
+      costUsageSeen = true;
+    }
+  }
+  if (
+    costTrackedTokenTotal > 0 &&
+    result.tokenUsage !== null &&
+    costTrackedTokenTotal < result.tokenUsage
+  ) {
+    costComplete = false;
+  }
+  result.estimatedCostUsd = costUsageSeen && costComplete ? accumulatedCostUsd : null;
 
   const stats = await statOrNull(filePath);
   if (stats) {
@@ -648,6 +712,7 @@ async function parseClaudeTranscript(filePath) {
     branch: "",
     tokenUsage: null,
     tokenBreakdown: null,
+    estimatedCostUsd: null,
     title: "",
     summary: "",
     firstPrompt: "",
@@ -763,7 +828,10 @@ async function parseClaudeTranscript(filePath) {
     }
 
     if (typeof record.message.id === "string" && record.message.usage) {
-      usageByMessageId.set(record.message.id, record.message.usage);
+      usageByMessageId.set(record.message.id, {
+        model: record.message.model,
+        usage: record.message.usage
+      });
     }
   });
 
@@ -776,7 +844,10 @@ async function parseClaudeTranscript(filePath) {
       reasoning: null
     };
     let recognizedUsage = false;
-    const tokenUsage = [...usageByMessageId.values()].reduce((total, usage) => {
+    let accumulatedCostUsd = 0;
+    let costComplete = true;
+    const tokenUsage = [...usageByMessageId.values()].reduce((total, entry) => {
+      const { model, usage } = entry;
       const breakdown = claudeUsageBreakdown(usage);
       if (breakdown) {
         recognizedUsage = true;
@@ -792,12 +863,34 @@ async function parseClaudeTranscript(filePath) {
         if (breakdown.cacheWrite !== null) {
           totals.cacheWrite = (totals.cacheWrite || 0) + breakdown.cacheWrite;
         }
+
+        const speed = typeof usage.speed === "string" ? usage.speed.toLowerCase() : "";
+        const inferenceGeo =
+          typeof usage.inference_geo === "string"
+            ? usage.inference_geo.toLowerCase()
+            : "";
+        const cost =
+          speed && speed !== "standard"
+            ? null
+            : estimateTokenCostUsd(model, breakdown, {
+                cacheWrite5mTokens:
+                  usage.cache_creation?.ephemeral_5m_input_tokens,
+                cacheWrite1hTokens:
+                  usage.cache_creation?.ephemeral_1h_input_tokens,
+                multiplier: inferenceGeo.startsWith("us") ? 1.1 : 1
+              });
+        if (cost === null) {
+          costComplete = false;
+        } else {
+          accumulatedCostUsd += cost;
+        }
       }
       return total + (claudeUsageTotal(usage) || 0);
     }, 0);
     if (recognizedUsage) {
       result.tokenUsage = tokenUsage;
       result.tokenBreakdown = strictTokenBreakdown(totals);
+      result.estimatedCostUsd = costComplete ? accumulatedCostUsd : null;
     }
   }
 
@@ -867,6 +960,7 @@ function strictSession(session) {
     turnCount: nonNegativeInteger(session.turnCount),
     toolCallCount: nonNegativeInteger(session.toolCallCount),
     tokenBreakdown: strictTokenBreakdown(session.tokenBreakdown),
+    estimatedCostUsd: nonNegativeNumber(session.estimatedCostUsd),
     source: cleanText(session.source, 120),
     permissionMode: cleanText(session.permissionMode, 160),
     sandboxMode: cleanText(session.sandboxMode, 160),
@@ -940,6 +1034,14 @@ function createSessionScanner({ canonicalProjectPath, worktreeRootPath } = {}) {
           branch: row.git_branch || transcript.branch || "",
           tokenUsage: transcript.tokenUsage ?? databaseTokenFallback,
           tokenBreakdown: transcript.tokenBreakdown,
+          estimatedCostUsd:
+            transcript.estimatedCostUsd ??
+            (transcript.aggregateCostFallbackAllowed
+              ? estimateTokenCostUsd(
+                  row.model || transcript.model,
+                  transcript.tokenBreakdown
+                )
+              : null),
           summary: transcript.summary || "",
           firstPrompt,
           workingDirectory: cwd,
@@ -980,6 +1082,7 @@ function createSessionScanner({ canonicalProjectPath, worktreeRootPath } = {}) {
           branch: transcript.branch,
           tokenUsage: transcript.tokenUsage,
           tokenBreakdown: transcript.tokenBreakdown,
+          estimatedCostUsd: transcript.estimatedCostUsd,
           summary: transcript.summary,
           firstPrompt: transcript.firstPrompt,
           workingDirectory: transcript.cwd,
@@ -1043,6 +1146,7 @@ function createSessionScanner({ canonicalProjectPath, worktreeRootPath } = {}) {
             branch: transcript.branch || indexEntry?.gitBranch || "",
             tokenUsage: transcript.tokenUsage,
             tokenBreakdown: transcript.tokenBreakdown,
+            estimatedCostUsd: transcript.estimatedCostUsd,
             summary: transcript.summary || indexSummary,
             firstPrompt,
             workingDirectory,

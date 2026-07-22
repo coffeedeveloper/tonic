@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useI18n } from "../i18n";
 import type { SessionRecord } from "../types";
-import { formatCount, formatTokenUsage } from "../utils/format";
+import { formatCount, formatTokenUsage, formatUsdCost } from "../utils/format";
 import { SessionDetails } from "./SessionDetails";
 import { TimeValue } from "./ui/TimeValue";
 import type { TooltipPropsFactory } from "./ui/Tooltip";
@@ -54,6 +54,7 @@ export function SessionCard({
     session.workingDirectory ||
       session.worktreePath ||
       session.tokenBreakdown ||
+      session.estimatedCostUsd !== null ||
       session.source ||
       session.permissionMode ||
       session.sandboxMode ||
@@ -141,6 +142,12 @@ export function SessionCard({
             <span>
               <b>{t("session.usage")}</b>
               {formatTokenUsage(session.tokenUsage, language)}
+            </span>
+          ) : null}
+          {session.estimatedCostUsd !== null ? (
+            <span>
+              <b>{t("session.estimatedCost")}</b>
+              {formatUsdCost(session.estimatedCostUsd, language)}
             </span>
           ) : null}
           {session.workingDirectory ? (

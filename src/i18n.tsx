@@ -87,6 +87,9 @@ const en = {
   "session.branch": "Branch",
   "session.notRecorded": "Not recorded",
   "session.usage": "Usage",
+  "session.estimatedCost": "Est. token cost",
+  "session.costEstimateHint":
+    "Estimated in USD from standard API token prices. This is not your subscription bill and excludes tool fees or pricing modifiers absent from the transcript.",
   "session.workingDirectory": "Working directory",
   "session.worktree": "Git worktree",
   "session.projectRoot": "Project root",
@@ -253,6 +256,9 @@ const zh: Record<TranslationKey, string> = {
   "session.branch": "分支",
   "session.notRecorded": "未记录",
   "session.usage": "用量",
+  "session.estimatedCost": "Token 费用估算",
+  "session.costEstimateHint":
+    "按标准 API Token 美元价格估算；这不是订阅账单，且不包含工具费用或会话记录中缺失的价格调整项。",
   "session.workingDirectory": "工作目录",
   "session.worktree": "Git worktree",
   "session.projectRoot": "项目根目录",
