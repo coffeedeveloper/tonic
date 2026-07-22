@@ -52,6 +52,17 @@ function mergeProject(projects: ProjectSummary[], project: ProjectSummary) {
   );
 }
 
+function mergeRefreshedProjects(
+  currentProjects: ProjectSummary[],
+  refreshedProjects: ProjectSummary[]
+) {
+  const currentById = new Map(currentProjects.map((project) => [project.id, project]));
+  return refreshedProjects.map((project) => {
+    const current = currentById.get(project.id);
+    return current ? { ...project, pinned: current.pinned } : project;
+  });
+}
+
 function setProjectPinnedOptimistically(
   projects: ProjectSummary[],
   projectId: string,
@@ -179,6 +190,21 @@ export function App() {
       setLoadStatus("error");
     }
   }, []);
+
+  useEffect(
+    () =>
+      api.onBootstrapUpdated((data) => {
+        setProjects((current) => mergeRefreshedProjects(current, data.projects));
+        setSettings(data.settings);
+        setEditors(data.editors);
+        setSelectedProjectId((current) =>
+          current && data.projects.some((project) => project.id === current)
+            ? current
+            : data.projects[0]?.id ?? null
+        );
+      }),
+    []
+  );
 
   useEffect(() => {
     void loadBootstrap();

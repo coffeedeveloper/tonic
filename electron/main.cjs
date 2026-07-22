@@ -44,6 +44,7 @@ const channels = Object.freeze({
   copyResumeCommand: "tonic:copy-resume-command",
   chooseCustomEditor: "tonic:choose-custom-editor",
   saveSettings: "tonic:save-settings",
+  bootstrapUpdated: "tonic:bootstrap-updated",
   menuChooseProject: "tonic:menu-choose-project",
   menuOpenSettings: "tonic:menu-open-settings",
   menuSelectTab: "tonic:menu-select-tab",
@@ -54,6 +55,7 @@ class PublicError extends Error {}
 
 let mainWindow = null;
 let bootstrapPromise = null;
+let backgroundBootstrapPromise = null;
 
 function projectIdForPath(projectPath) {
   return crypto.createHash("sha256").update(projectPath).digest("hex").slice(0, 32);
@@ -301,6 +303,20 @@ async function makeProjectSummary(project, sessions, knownWorktrees) {
   };
 }
 
+function cachedProjectSummary(project) {
+  const cached = project.summaryCache;
+  return {
+    id: project.id,
+    name: path.basename(project.path) || project.path,
+    path: project.path,
+    codexSessionCount: cached?.codexSessionCount ?? 0,
+    claudeSessionCount: cached?.claudeSessionCount ?? 0,
+    worktreeCount: cached?.worktreeCount ?? 0,
+    missing: cached?.missing ?? false,
+    pinned: Boolean(project.pinned)
+  };
+}
+
 function orderedProjects(state) {
   return state.projects
     .map((project, index) => ({ project, index }))
@@ -330,12 +346,55 @@ function makeProjectPinStates(state) {
   }));
 }
 
-async function makeProjectSummaries(state, sessions) {
-  const summaries = [];
-  for (const project of orderedProjects(state)) {
-    summaries.push(await makeProjectSummary(project, sessions));
+async function mapWithConcurrency(values, limit, mapper) {
+  const results = new Array(values.length);
+  let cursor = 0;
+
+  async function worker() {
+    while (cursor < values.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await mapper(values[index], index);
+    }
   }
-  return summaries;
+
+  await Promise.all(
+    Array.from({ length: Math.min(limit, values.length) }, () => worker())
+  );
+  return results;
+}
+
+async function makeProjectSummaries(state, sessions) {
+  return mapWithConcurrency(
+    orderedProjects(state),
+    6,
+    (project) => makeProjectSummary(project, sessions)
+  );
+}
+
+function cachedProjectSummaries(state) {
+  return orderedProjects(state).map(cachedProjectSummary);
+}
+
+async function persistProjectSummaries(summaries) {
+  const summaryById = new Map(summaries.map((summary) => [summary.id, summary]));
+  const scannedAt = new Date().toISOString();
+  const state = await stateStore.update((current) => {
+    for (const project of current.projects) {
+      const summary = summaryById.get(project.id);
+      if (!summary || !isSamePath(summary.path, project.path)) {
+        continue;
+      }
+      project.summaryCache = {
+        codexSessionCount: summary.codexSessionCount,
+        claudeSessionCount: summary.claudeSessionCount,
+        worktreeCount: summary.worktreeCount,
+        missing: summary.missing,
+        scannedAt
+      };
+    }
+  });
+  return { state, projects: cachedProjectSummaries(state) };
 }
 
 function addProjectRecord(state, projectPath, addedAt = new Date().toISOString()) {
@@ -377,7 +436,9 @@ async function chooseProject() {
   });
   const sessions = await loadSessions({ tolerateFailure: true });
   const project = state.projects.find((candidate) => isSamePath(candidate.path, projectPath));
-  return makeProjectSummary(project, sessions);
+  const summary = await makeProjectSummary(project, sessions);
+  await persistProjectSummaries([summary]);
+  return summary;
 }
 
 async function scanProjects() {
@@ -410,8 +471,10 @@ async function scanProjects() {
     }
   });
 
+  const summaries = await makeProjectSummaries(state, sessions);
+  const refreshed = await persistProjectSummaries(summaries);
   return {
-    projects: await makeProjectSummaries(state, sessions),
+    projects: refreshed.projects,
     addedCount,
     discoveredSessionCount: sessions.length
   };
@@ -422,8 +485,7 @@ async function removeProject(projectId) {
   const state = await stateStore.update((current) => {
     current.projects = current.projects.filter((project) => project.id !== id);
   });
-  const sessions = await loadSessions({ tolerateFailure: true });
-  return makeProjectSummaries(state, sessions);
+  return cachedProjectSummaries(state);
 }
 
 async function setProjectPinned(projectId, pinned) {
@@ -500,8 +562,9 @@ async function getProjectDetails(projectId) {
   const missing = !(await directoryExists(project.path));
   const worktrees = missing ? [] : await worktreesForProject(project.path);
 
+  const summary = await makeProjectSummary(project, sessions, worktrees);
   return {
-    project: await makeProjectSummary(project, sessions, worktrees),
+    project: summary,
     sessions: projectSessions,
     worktrees,
     scannedAt: new Date().toISOString()
@@ -686,39 +749,112 @@ async function editorOptionsWithIcons(editors) {
   );
 }
 
+function initialEditorOptions(settings) {
+  return [
+    {
+      id: "auto",
+      name: "Auto-detect",
+      appPath: null,
+      iconDataUrl: null,
+      available: true
+    },
+    {
+      id: "system",
+      name: "Finder / system default",
+      appPath: null,
+      iconDataUrl: null,
+      available: true
+    },
+    ...(settings.customEditorPath
+      ? [customEditorOption(settings.customEditorPath)]
+      : [])
+  ];
+}
+
+function sameSettings(left, right) {
+  return (
+    left.editorId === right.editorId &&
+    left.customEditorPath === right.customEditorPath &&
+    left.launchAtLogin === right.launchAtLogin &&
+    left.yoloMode === right.yoloMode &&
+    left.language === right.language &&
+    left.theme === right.theme
+  );
+}
+
+async function refreshBootstrapData() {
+  const initialState = await stateStore.read();
+  let availableSettings = await settingsWithAvailableCustomEditor(initialState.settings);
+  const [sessions, detectedEditors] = await Promise.all([
+    loadSessions(),
+    detectEditors(availableSettings.customEditorPath)
+  ]);
+  const editors = await editorOptionsWithIcons(detectedEditors);
+  if (!editors.some((editor) => editor.id === availableSettings.editorId)) {
+    availableSettings = { ...availableSettings, editorId: "auto" };
+  }
+
+  const latestState = await stateStore.read();
+  const summaries = await makeProjectSummaries(latestState, sessions);
+  const summaryById = new Map(summaries.map((summary) => [summary.id, summary]));
+  const scannedAt = new Date().toISOString();
+  const storedState = await stateStore.update((current) => {
+    if (sameSettings(current.settings, initialState.settings)) {
+      current.settings = availableSettings;
+    }
+    for (const project of current.projects) {
+      const summary = summaryById.get(project.id);
+      if (!summary || !isSamePath(summary.path, project.path)) {
+        continue;
+      }
+      project.summaryCache = {
+        codexSessionCount: summary.codexSessionCount,
+        claudeSessionCount: summary.claudeSessionCount,
+        worktreeCount: summary.worktreeCount,
+        missing: summary.missing,
+        scannedAt
+      };
+    }
+  });
+
+  return {
+    projects: cachedProjectSummaries(storedState),
+    settings: settingsWithSystemState(storedState.settings),
+    editors
+  };
+}
+
+function refreshBootstrapInBackground() {
+  if (!backgroundBootstrapPromise) {
+    backgroundBootstrapPromise = refreshBootstrapData()
+      .then((data) => {
+        sendRendererEvent(channels.bootstrapUpdated, data);
+        return data;
+      })
+      .catch((error) => {
+        console.warn("Unable to refresh startup data:", error?.message ?? error);
+        return null;
+      })
+      .finally(() => {
+        backgroundBootstrapPromise = null;
+      });
+  }
+  return backgroundBootstrapPromise;
+}
+
 async function getBootstrap() {
   if (!bootstrapPromise) {
     bootstrapPromise = (async () => {
       const state = await stateStore.read();
-      let availableSettings = await settingsWithAvailableCustomEditor(state.settings);
-      if (
-        availableSettings.editorId !== state.settings.editorId ||
-        availableSettings.customEditorPath !== state.settings.customEditorPath
-      ) {
-        await stateStore.update((current) => {
-          current.settings = availableSettings;
-        });
-        state.settings = availableSettings;
-      }
-      const [sessions, detectedEditors] = await Promise.all([
-        loadSessions({ tolerateFailure: true }),
-        detectEditors(state.settings.customEditorPath)
-      ]);
-      const editors = await editorOptionsWithIcons(detectedEditors);
-
-      if (!editors.some((editor) => editor.id === availableSettings.editorId)) {
-        availableSettings = { ...availableSettings, editorId: "auto" };
-        await stateStore.update((current) => {
-          current.settings = availableSettings;
-        });
-        state.settings = availableSettings;
-      }
-
-      return {
-        projects: await makeProjectSummaries(state, sessions),
+      const data = {
+        projects: cachedProjectSummaries(state),
         settings: settingsWithSystemState(state.settings),
-        editors
+        editors: initialEditorOptions(state.settings)
       };
+      setTimeout(() => {
+        void refreshBootstrapInBackground();
+      }, 0);
+      return data;
     })();
   }
 
@@ -831,6 +967,16 @@ function showMainWindow() {
   }
   mainWindow.show();
   mainWindow.focus();
+}
+
+function sendRendererEvent(channel, payload) {
+  if (
+    mainWindow &&
+    !mainWindow.isDestroyed() &&
+    !mainWindow.webContents.isLoading()
+  ) {
+    mainWindow.webContents.send(channel, payload);
+  }
 }
 
 function sendMenuEvent(channel, payload) {

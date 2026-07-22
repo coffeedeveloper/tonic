@@ -310,10 +310,13 @@ async function collectSnapshot() {
     ...claudeProjects.flatMap((project) => [project.indexPath, ...project.jsonlPaths])
   ];
   const signatureParts = [];
+  const fileFingerprints = new Map();
   for (const filePath of [...new Set(signaturePaths)].sort()) {
     const stats = await statOrNull(filePath);
     if (stats) {
-      signatureParts.push(`${filePath}\0${stats.mtimeMs}\0${stats.size}`);
+      const fingerprint = `${stats.mtimeMs}\0${stats.size}`;
+      fileFingerprints.set(filePath, fingerprint);
+      signatureParts.push(`${filePath}\0${fingerprint}`);
     }
   }
 
@@ -322,6 +325,7 @@ async function collectSnapshot() {
     codexJsonlPaths: [...new Set([...activeCodexFiles, ...archivedCodexFiles])],
     codexSessionIndexPath,
     claudeProjects,
+    fileFingerprints,
     signature: crypto.createHash("sha256").update(signatureParts.join("\n")).digest("hex")
   };
 }
@@ -1005,12 +1009,45 @@ function createSessionScanner({ canonicalProjectPath, worktreeRootPath } = {}) {
   }
 
   let cache = null;
+  let scanPromise = null;
+  const codexTranscriptCache = new Map();
+  const claudeTranscriptCache = new Map();
+
+  async function cachedTranscript(filePath, snapshot, transcriptCache, parser) {
+    const fingerprint = snapshot.fileFingerprints.get(filePath) || "";
+    const cached = transcriptCache.get(filePath);
+    if (fingerprint && cached?.fingerprint === fingerprint) {
+      return cached.transcript;
+    }
+
+    const transcript = await parser(filePath);
+    if (fingerprint) {
+      transcriptCache.set(filePath, { fingerprint, transcript });
+    }
+    return transcript;
+  }
+
+  function pruneTranscriptCache(transcriptCache, currentPaths) {
+    const current = new Set(currentPaths);
+    for (const filePath of transcriptCache.keys()) {
+      if (!current.has(filePath)) {
+        transcriptCache.delete(filePath);
+      }
+    }
+  }
 
   async function scanCodex(snapshot, projectPathCache, worktreePathCache) {
     const [database, names, transcripts] = await Promise.all([
       loadCodexDatabase(snapshot.codexDatabases),
       loadCodexNames(snapshot.codexSessionIndexPath),
-      mapLimit(snapshot.codexJsonlPaths, 8, parseCodexTranscript)
+      mapLimit(snapshot.codexJsonlPaths, 8, (filePath) =>
+        cachedTranscript(
+          filePath,
+          snapshot,
+          codexTranscriptCache,
+          parseCodexTranscript
+        )
+      )
     ]);
     const transcriptById = new Map();
     for (const transcript of transcripts) {
@@ -1131,7 +1168,14 @@ function createSessionScanner({ canonicalProjectPath, worktreeRootPath } = {}) {
     const sessions = [];
     for (const project of snapshot.claudeProjects) {
       const validatedIndex = await validatedClaudeIndex(project);
-      const transcripts = await mapLimit(project.jsonlPaths, 8, parseClaudeTranscript);
+      const transcripts = await mapLimit(project.jsonlPaths, 8, (filePath) =>
+        cachedTranscript(
+          filePath,
+          snapshot,
+          claudeTranscriptCache,
+          parseClaudeTranscript
+        )
+      );
 
       for (const transcript of transcripts) {
         if (!transcript?.id) continue;
@@ -1195,17 +1239,23 @@ function createSessionScanner({ canonicalProjectPath, worktreeRootPath } = {}) {
     return sessions;
   }
 
-  async function scanSessions({ force = false } = {}) {
+  async function performScan({ force = false } = {}) {
     const now = Date.now();
     if (!force && cache && now - cache.checkedAt < CACHE_TTL_MS) {
-      return cloneSessions(cache.sessions);
+      return cache.sessions;
     }
 
     const snapshot = await collectSnapshot();
     if (!force && cache && cache.signature === snapshot.signature) {
-      cache.checkedAt = now;
-      return cloneSessions(cache.sessions);
+      cache.checkedAt = Date.now();
+      return cache.sessions;
     }
+
+    pruneTranscriptCache(codexTranscriptCache, snapshot.codexJsonlPaths);
+    pruneTranscriptCache(
+      claudeTranscriptCache,
+      snapshot.claudeProjects.flatMap((project) => project.jsonlPaths)
+    );
 
     const projectPathCache = new Map();
     const worktreePathCache = new Map();
@@ -1227,8 +1277,17 @@ function createSessionScanner({ canonicalProjectPath, worktreeRootPath } = {}) {
     const sessions = [...byAgentAndId.values()].sort((left, right) => {
       return Date.parse(right.updatedAt || 0) - Date.parse(left.updatedAt || 0);
     });
-    cache = { checkedAt: now, signature: snapshot.signature, sessions };
-    return cloneSessions(sessions);
+    cache = { checkedAt: Date.now(), signature: snapshot.signature, sessions };
+    return sessions;
+  }
+
+  async function scanSessions(options = {}) {
+    if (!scanPromise) {
+      scanPromise = performScan(options).finally(() => {
+        scanPromise = null;
+      });
+    }
+    return cloneSessions(await scanPromise);
   }
 
   return { scanSessions };

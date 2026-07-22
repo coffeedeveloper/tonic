@@ -127,6 +127,7 @@ export interface TonicApi {
   copyResumeCommand: (session: Pick<SessionRecord, "agent" | "id">) => Promise<string>;
   chooseCustomEditor: () => Promise<EditorOption | null>;
   saveSettings: (settings: Settings) => Promise<Settings>;
+  onBootstrapUpdated: (callback: (data: BootstrapData) => void) => () => void;
   onChooseProject: (callback: () => void) => () => void;
   onOpenSettings: (callback: () => void) => () => void;
   onSelectTab: (callback: (tab: DetailTab) => void) => () => void;

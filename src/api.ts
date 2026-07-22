@@ -82,6 +82,9 @@ const browserFallback: TonicApi = {
     fallbackBootstrap.settings = savedSettings;
     return savedSettings;
   },
+  onBootstrapUpdated() {
+    return () => undefined;
+  },
   onChooseProject() {
     return () => undefined;
   },

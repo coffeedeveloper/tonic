@@ -136,6 +136,68 @@ test("attributes a Codex worktree session to the main project", async (context) 
   assert.equal(sessions[0].projectPath, await fs.realpath(projectPath));
 });
 
+test("coalesces concurrent session scans", async (context) => {
+  const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "tonic-scanner-test-"));
+  const previousCodexHome = process.env.CODEX_HOME;
+  const previousClaudeHome = process.env.CLAUDE_CONFIG_DIR;
+  context.after(async () => {
+    if (previousCodexHome === undefined) {
+      delete process.env.CODEX_HOME;
+    } else {
+      process.env.CODEX_HOME = previousCodexHome;
+    }
+    if (previousClaudeHome === undefined) {
+      delete process.env.CLAUDE_CONFIG_DIR;
+    } else {
+      process.env.CLAUDE_CONFIG_DIR = previousClaudeHome;
+    }
+    await fs.rm(temporaryRoot, { recursive: true, force: true });
+  });
+
+  const sessionId = "87654321-4321-4321-4321-cba987654321";
+  const codexHome = path.join(temporaryRoot, "codex");
+  const projectPath = path.join(temporaryRoot, "project");
+  await fs.mkdir(path.join(codexHome, "sessions"), { recursive: true });
+  await fs.mkdir(path.join(temporaryRoot, "claude", "projects"), {
+    recursive: true
+  });
+  await fs.mkdir(projectPath, { recursive: true });
+  await fs.writeFile(
+    path.join(codexHome, "sessions", `rollout-${sessionId}.jsonl`),
+    `${JSON.stringify({
+      timestamp: "2026-07-22T00:00:00.000Z",
+      type: "session_meta",
+      payload: { id: sessionId, cwd: projectPath }
+    })}\n`
+  );
+  process.env.CODEX_HOME = codexHome;
+  process.env.CLAUDE_CONFIG_DIR = path.join(temporaryRoot, "claude");
+
+  let projectResolutionCount = 0;
+  let worktreeResolutionCount = 0;
+  const scanner = createSessionScanner({
+    canonicalProjectPath: async (value) => {
+      projectResolutionCount += 1;
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      return value;
+    },
+    worktreeRootPath: async (value) => {
+      worktreeResolutionCount += 1;
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      return value;
+    }
+  });
+  const [first, second] = await Promise.all([
+    scanner.scanSessions({ force: true }),
+    scanner.scanSessions({ force: true })
+  ]);
+
+  assert.equal(first.length, 1);
+  assert.deepEqual(second, first);
+  assert.equal(projectResolutionCount, 1);
+  assert.equal(worktreeResolutionCount, 1);
+});
+
 async function runGit(args, environment = {}) {
   await execFileAsync("/usr/bin/git", args, {
     env: { ...process.env, ...environment },

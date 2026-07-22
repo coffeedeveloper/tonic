@@ -12,6 +12,7 @@ const channels = Object.freeze({
   copyResumeCommand: "tonic:copy-resume-command",
   chooseCustomEditor: "tonic:choose-custom-editor",
   saveSettings: "tonic:save-settings",
+  bootstrapUpdated: "tonic:bootstrap-updated",
   menuChooseProject: "tonic:menu-choose-project",
   menuOpenSettings: "tonic:menu-open-settings",
   menuSelectTab: "tonic:menu-select-tab",
@@ -56,6 +57,8 @@ const tonicApi = Object.freeze({
       language: settings?.language,
       theme: settings?.theme
     }),
+  onBootstrapUpdated: (callback) =>
+    subscribe(channels.bootstrapUpdated, callback),
   onChooseProject: (callback) => subscribe(channels.menuChooseProject, callback, () => undefined),
   onOpenSettings: (callback) => subscribe(channels.menuOpenSettings, callback, () => undefined),
   onSelectTab: (callback) =>

@@ -1,7 +1,7 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
-const STORE_VERSION = 4;
+const STORE_VERSION = 5;
 const defaultSettings = Object.freeze({
   editorId: "auto",
   customEditorPath: null,
@@ -42,6 +42,25 @@ function normalizeSettings(value) {
   };
 }
 
+function normalizeProjectSummaryCache(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const count = (candidate) =>
+    Number.isSafeInteger(candidate) && candidate >= 0 ? candidate : 0;
+  return {
+    codexSessionCount: count(value.codexSessionCount),
+    claudeSessionCount: count(value.claudeSessionCount),
+    worktreeCount: count(value.worktreeCount),
+    missing: Boolean(value.missing),
+    scannedAt:
+      typeof value.scannedAt === "string" && Number.isFinite(Date.parse(value.scannedAt))
+        ? new Date(value.scannedAt).toISOString()
+        : new Date(0).toISOString()
+  };
+}
+
 function normalizeProject(value) {
   if (
     !value ||
@@ -67,7 +86,8 @@ function normalizeProject(value) {
     addedAt:
       typeof value.addedAt === "string" && Number.isFinite(Date.parse(value.addedAt))
         ? new Date(value.addedAt).toISOString()
-        : new Date(0).toISOString()
+        : new Date(0).toISOString(),
+    summaryCache: normalizeProjectSummaryCache(value.summaryCache)
   };
 }
 
@@ -196,5 +216,6 @@ module.exports = {
   createJsonStore,
   defaultSettings,
   normalizeSettings,
+  normalizeProjectSummaryCache,
   normalizeStore
 };
