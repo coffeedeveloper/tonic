@@ -791,7 +791,7 @@ function createWindow() {
     show: false,
     title: "tonic",
     titleBarStyle: "hiddenInset",
-    trafficLightPosition: { x: 18, y: 17 },
+    trafficLightPosition: { x: 18, y: 12 },
     backgroundColor: "#f7f5ef",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
