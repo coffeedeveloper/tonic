@@ -319,7 +319,8 @@ body {
 
 :root[data-theme="dark"] .session-card:hover,
 :root[data-theme="dark"] .session-card:focus-within,
-:root[data-theme="dark"] .session-card.expanded {
+:root[data-theme="dark"] .session-card.expanded,
+:root[data-theme="dark"] .worktree-card.expanded {
   border-color: #565c66;
   box-shadow: 0 9px 26px rgba(0, 0, 0, 0.2);
 }

@@ -70,11 +70,30 @@ export interface CommitInfo {
   authoredAt: string;
 }
 
+export type WorktreeFileStatus =
+  | "added"
+  | "modified"
+  | "deleted"
+  | "renamed"
+  | "copied"
+  | "untracked"
+  | "conflicted";
+
+export interface WorktreeFileChange {
+  path: string;
+  previousPath: string | null;
+  status: WorktreeFileStatus;
+  additions: number | null;
+  deletions: number | null;
+  binary: boolean;
+}
+
 export interface WorktreeRecord {
   path: string;
   name: string;
   branch: string;
   changeCount: number;
+  changes: WorktreeFileChange[];
   isMain: boolean;
   lastCommit: CommitInfo | null;
 }

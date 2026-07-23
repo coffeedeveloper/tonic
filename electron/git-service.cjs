@@ -6,6 +6,7 @@ const { promisify } = require("node:util");
 
 const execFileAsync = promisify(execFile);
 const GIT_MAX_BUFFER = 16 * 1024 * 1024;
+const UNTRACKED_FILE_MAX_BYTES = 16 * 1024 * 1024;
 
 async function runGit(args, options = {}) {
   const { stdout } = await execFileAsync("/usr/bin/git", args, {
@@ -199,9 +200,35 @@ async function canonicalProjectPath(inputPath) {
   return worktreeRoot;
 }
 
-function countStatusRecords(output) {
+function statusPath(record, separatorCount) {
+  let pathIndex = 0;
+
+  for (let index = 0; index < separatorCount; index += 1) {
+    pathIndex = record.indexOf(" ", pathIndex);
+    if (pathIndex === -1) {
+      return "";
+    }
+    pathIndex += 1;
+  }
+
+  return record.slice(pathIndex);
+}
+
+function fileStatus(recordType, xy = "") {
+  if (recordType === "?") return "untracked";
+  if (recordType === "u" || xy.includes("U") || xy === "AA" || xy === "DD") {
+    return "conflicted";
+  }
+  if (recordType === "2" && xy.includes("R")) return "renamed";
+  if (recordType === "2" && xy.includes("C")) return "copied";
+  if (xy.includes("A")) return "added";
+  if (xy.includes("D")) return "deleted";
+  return "modified";
+}
+
+function parseStatusRecords(output) {
   const fields = output.split("\0");
-  let count = 0;
+  const records = [];
 
   for (let index = 0; index < fields.length; index += 1) {
     const record = fields[index];
@@ -210,30 +237,213 @@ function countStatusRecords(output) {
     }
 
     const recordType = record[0];
-    if (recordType === "1" || recordType === "u" || recordType === "?") {
-      count += 1;
+    const xy = record.slice(2, 4);
+    let filePath = "";
+    let previousPath = null;
+
+    if (recordType === "1") {
+      filePath = statusPath(record, 8);
     } else if (recordType === "2") {
-      count += 1;
+      filePath = statusPath(record, 9);
+      previousPath = fields[index + 1] || null;
       index += 1;
+    } else if (recordType === "u") {
+      filePath = statusPath(record, 10);
+    } else if (recordType === "?") {
+      filePath = record.slice(2);
+    }
+
+    if (filePath) {
+      records.push({
+        path: filePath,
+        previousPath,
+        status: fileStatus(recordType, xy)
+      });
     }
   }
 
-  return count;
+  return records;
 }
 
-async function getChangeCount(worktreePath) {
+function parsedLineCount(value) {
+  return value === "-" ? null : Number.parseInt(value, 10);
+}
+
+function parseNumstat(output) {
+  const fields = output.split("\0");
+  const stats = new Map();
+
+  for (let index = 0; index < fields.length; index += 1) {
+    const record = fields[index];
+    if (!record) continue;
+
+    const firstTab = record.indexOf("\t");
+    const secondTab = record.indexOf("\t", firstTab + 1);
+    if (firstTab === -1 || secondTab === -1) continue;
+
+    const additions = parsedLineCount(record.slice(0, firstTab));
+    const deletions = parsedLineCount(record.slice(firstTab + 1, secondTab));
+    let filePath = record.slice(secondTab + 1);
+
+    if (!filePath) {
+      index += 1;
+      index += 1;
+      filePath = fields[index] || "";
+    }
+
+    if (filePath) {
+      stats.set(filePath, {
+        additions,
+        deletions,
+        binary: additions === null || deletions === null
+      });
+    }
+  }
+
+  return stats;
+}
+
+async function getTrackedLineStats(worktreePath) {
   try {
     const output = await runGit([
       "-C",
       worktreePath,
-      "status",
-      "--porcelain=v2",
+      "diff",
+      "--numstat",
       "-z",
-      "--untracked-files=all"
+      "HEAD",
+      "--"
     ]);
-    return countStatusRecords(output);
+    return parseNumstat(output);
   } catch {
-    return 0;
+    try {
+      const emptyTree = (
+        await runGit(["-C", worktreePath, "hash-object", "-t", "tree", "/dev/null"])
+      ).trim();
+      const output = await runGit([
+        "-C",
+        worktreePath,
+        "diff",
+        "--numstat",
+        "-z",
+        emptyTree,
+        "--"
+      ]);
+      return parseNumstat(output);
+    } catch {
+      return new Map();
+    }
+  }
+}
+
+function unavailableLineStats() {
+  return { additions: null, deletions: null, binary: false };
+}
+
+async function getUntrackedLineStats(worktreePath, relativePath) {
+  const absolutePath = path.resolve(worktreePath, relativePath);
+  const resolvedRelativePath = path.relative(worktreePath, absolutePath);
+  if (
+    !resolvedRelativePath ||
+    resolvedRelativePath === ".." ||
+    resolvedRelativePath.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(resolvedRelativePath)
+  ) {
+    return unavailableLineStats();
+  }
+
+  try {
+    const stats = await fs.lstat(absolutePath);
+    if (stats.isSymbolicLink()) {
+      const linkTarget = await fs.readlink(absolutePath);
+      return {
+        additions: linkTarget ? 1 : 0,
+        deletions: 0,
+        binary: false
+      };
+    }
+    if (!stats.isFile()) {
+      return unavailableLineStats();
+    }
+    if (stats.size > UNTRACKED_FILE_MAX_BYTES) {
+      return unavailableLineStats();
+    }
+
+    const file = await fs.open(absolutePath, "r");
+    const buffer = Buffer.alloc(64 * 1024);
+    let bytesReadTotal = 0;
+    let inspectedBytes = 0;
+    let lineCount = 0;
+    let lastByte = null;
+
+    try {
+      while (true) {
+        const { bytesRead } = await file.read(buffer, 0, buffer.length, null);
+        if (!bytesRead) break;
+        if (bytesReadTotal + bytesRead > UNTRACKED_FILE_MAX_BYTES) {
+          return unavailableLineStats();
+        }
+
+        const inspectionLength = Math.min(bytesRead, 8_000 - inspectedBytes);
+        for (let index = 0; index < inspectionLength; index += 1) {
+          if (buffer[index] === 0) {
+            return { additions: null, deletions: null, binary: true };
+          }
+        }
+        inspectedBytes += inspectionLength;
+
+        for (let index = 0; index < bytesRead; index += 1) {
+          if (buffer[index] === 10) lineCount += 1;
+        }
+        bytesReadTotal += bytesRead;
+        lastByte = buffer[bytesRead - 1];
+      }
+    } finally {
+      await file.close();
+    }
+
+    if (bytesReadTotal > 0 && lastByte !== 10) lineCount += 1;
+    return { additions: lineCount, deletions: 0, binary: false };
+  } catch {
+    return unavailableLineStats();
+  }
+}
+
+async function getWorktreeChanges(worktreePath) {
+  try {
+    const [statusOutput, lineStats] = await Promise.all([
+      runGit([
+        "-C",
+        worktreePath,
+        "status",
+        "--porcelain=v2",
+        "-z",
+        "--untracked-files=all"
+      ]),
+      getTrackedLineStats(worktreePath)
+    ]);
+    const changes = parseStatusRecords(statusOutput);
+    const untrackedChanges = changes.filter((change) => change.status === "untracked");
+
+    for (let index = 0; index < untrackedChanges.length; index += 4) {
+      const batch = untrackedChanges.slice(index, index + 4);
+      const batchStats = await Promise.all(
+        batch.map(async (change) => [
+          change.path,
+          await getUntrackedLineStats(worktreePath, change.path)
+        ])
+      );
+      for (const [filePath, stats] of batchStats) {
+        lineStats.set(filePath, stats);
+      }
+    }
+
+    return changes.map((change) => ({
+      ...change,
+      ...(lineStats.get(change.path) ?? unavailableLineStats())
+    }));
+  } catch {
+    return [];
   }
 }
 
@@ -295,8 +505,8 @@ async function listWorktrees(projectPath) {
         if (!(await isExistingDirectory(worktreePath))) {
           return null;
         }
-        const [changeCount, lastCommit] = await Promise.all([
-          getChangeCount(worktreePath),
+        const [changes, lastCommit] = await Promise.all([
+          getWorktreeChanges(worktreePath),
           getLastCommit(worktreePath)
         ]);
 
@@ -311,7 +521,8 @@ async function listWorktrees(projectPath) {
           path: worktreePath,
           name: path.basename(worktreePath) || worktreePath,
           branch,
-          changeCount,
+          changeCount: changes.length,
+          changes,
           isMain: worktreePath === normalizedMainPath,
           lastCommit
         };
